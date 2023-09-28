@@ -38,12 +38,8 @@ func (s *gRPCServer) ConnectionStream(conn protocol.Cluster_ConnectionStreamServ
 			resp, _ := s.GetPeers(ctx, nil)
 			conn.Send(resp)
 		default:
-			defaultMessage := &protocol.RPCResponse_Text{
-				Text: "unknown method",
-			}
-			conn.Send(&protocol.RPCResponse{
-				Message: defaultMessage,
-			})
+			defaultMessage := RPCText_Response("unknown method or method not implemented")
+			conn.Send(defaultMessage)
 		}
 	}
 }
