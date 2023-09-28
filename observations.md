@@ -22,4 +22,11 @@
 
 * go work init
 * always keep recover function in top
+* generic for function ref : `FromByte`
 
+* setting up gRPC server
+    * setup struct for grpc server
+    * implementing methods in proto file is mandatory, method should have 
+    `connectionServer` as function param and it should return `error`
+    * implement a `Connection` service and listen to it infinitely using `for {}`
+    

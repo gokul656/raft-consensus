@@ -7,6 +7,8 @@ import (
 
 	"github.com/gokul656/raft-consensus/common"
 	"github.com/gokul656/raft-consensus/config"
+	"github.com/gokul656/raft-consensus/protocol"
+	"github.com/gokul656/raft-consensus/rpc"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/reflection"
 )
@@ -17,8 +19,8 @@ func main() {
 	rpcPort := fmt.Sprintf(":%s", conf.RPCPort)
 	apiPort := fmt.Sprintf(":%s", conf.APIPort)
 
-	go setupRest(rpcPort)
-	go setupRPC(apiPort)
+	go setupRest(apiPort)
+	go setupRPC(rpcPort)
 
 	log.Println("[ rpc ] listening at         ", rpcPort)
 	log.Println("[ api ] listening at         ", apiPort)
@@ -33,14 +35,15 @@ func setupRPC(port string) {
 	server := grpc.NewServer()
 	listen, err := net.Listen("tcp", port)
 	if err != nil {
-		panic(common.INVALID_RPC_PORT)
+		panic(common.InvalidRPCPort)
 	}
 
-	if err := server.Serve(listen); err != nil {
+	protocol.RegisterClusterServer(server, rpc.NewgRPCServer())
+	reflection.Register(server)
+
+	if err = server.Serve(listen); err != nil {
 		panic(err)
 	}
-
-	reflection.Register(server)
 }
 
 func setupRest(port string) {

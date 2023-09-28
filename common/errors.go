@@ -6,10 +6,13 @@ import (
 )
 
 var (
-	INVALID_LEADER   = errors.New("LEADER NOT FOUND")
-	INVALID_RPC_PORT = errors.New("INVALID RPC PORT")
-	INVALID_API_PORT = errors.New("INVALID API PORT")
-	INVALID_LOG_PATH = errors.New("INVALID LOG PATH")
+	InvalidLeader  = errors.New("leader not found")
+	InvalidRPCPort = errors.New("invalid RPC port")
+	InvalidAPIPort = errors.New("invalid API port")
+	InvalidLogPath = errors.New("invalid Log path")
+
+	UnableToUnmarshal = errors.New("unable to convert struct to byte[]")
+	UnableToMarshal   = errors.New("unable to byte[] struct to struct")
 )
 
 func HandlePanic() {

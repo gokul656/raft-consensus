@@ -22,3 +22,9 @@ go.work
 
 # Raft log dir
 tmp/*
+
+# bin
+bin/*
+
+# Proto
+*.pb.go

@@ -1,0 +1,50 @@
+syntax = "proto3";
+
+import "google/protobuf/empty.proto";
+import "google/protobuf/any.proto";
+import "google/protobuf/struct.proto";
+
+option go_package = "github.com/gokul656/raft-consensus/protocol";
+
+message RPCRequest {
+    oneof message {
+        AddPeerRequest addPeer = 1;
+        InitiateElectionRequest electionRequest = 2;
+        google.protobuf.Struct getPeerList = 3;
+    }
+}
+
+message RPCResponse {
+    oneof message {
+        string text = 1;
+        CollectionMessage collection = 2;
+        google.protobuf.Struct struct = 3;
+    }
+}
+
+message CollectionMessage {
+    repeated google.protobuf.Any data = 1;
+}
+
+message PeerList {
+    repeated AddPeerRequest peers = 1;
+}
+
+message AddPeerRequest {
+    string name = 1;
+    string address = 2;
+}
+
+message InitiateElectionRequest {
+    string name = 1;
+    string address = 2;
+    uint64 term = 3;
+}
+
+service Cluster {
+    rpc ConnectionStream(stream RPCRequest) returns (stream RPCResponse) {};
+    
+    rpc AddPeer(AddPeerRequest) returns (RPCResponse) {}
+    rpc InitiateElection(InitiateElectionRequest) returns (RPCResponse)  {}
+    rpc GetPeers(google.protobuf.Empty) returns (RPCResponse){}
+}
