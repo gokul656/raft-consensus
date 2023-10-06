@@ -2,10 +2,14 @@ package peer
 
 import (
 	"context"
-	"math/rand"
+	"errors"
+	"log"
 	"time"
 
 	"github.com/gokul656/raft-consensus/common"
+	"github.com/gokul656/raft-consensus/protocol"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
 )
 
 type Vote struct {
@@ -15,25 +19,31 @@ type Vote struct {
 }
 
 type RaftHub struct {
-	Ctx    context.Context
-	Self   *Peer
-	Leader *Peer
-	Peers  Map[string, *Peer]
-}
-
-func (r *RaftHub) BootstrapPeer() {
-	if r.Leader == nil {
-		r.Vote(r.Self.Name)
-		r.Leader = r.Self
-	}
+	Self     *Peer
+	Leader   *Peer
+	LastPing time.Time
+	Peers    Map[string, *Peer]
 }
 
 func (r *RaftHub) AddPeer(name, address string) {
 	r.Peers.Put(name, &Peer{
 		Address: address,
 		Name:    name,
-		State:   CANDIDATE,
+		State:   FOLLOWER,
 	})
+
+	go r.ReplicateLogs()
+}
+
+func (r RaftHub) GetPeer(name string) *Peer {
+	defer common.HandlePanic("get_peer")
+
+	peer := r.Peers.Get(name)
+	if peer == nil {
+		panic(common.ErrInvalidPeer)
+	}
+
+	return peer
 }
 
 func (r *RaftHub) RemovePeer(name string) {
@@ -41,24 +51,102 @@ func (r *RaftHub) RemovePeer(name string) {
 }
 
 func (r *RaftHub) InitiateElection() {
-	vote := &Vote{
+	defer common.HandlePanic("initiate_election")
+
+	log.Println("Initiating new election")
+	electionRequest := &protocol.InitiateElectionRequest{
 		Address: r.Self.Address,
 		Name:    r.Self.Name,
 		Term:    1,
 	}
 
+	r.ChangeLeader(r.Self.Name)
+	r.Self.State = CANDIDATE
+	ctx := context.Background()
 	for _, peer := range r.Peers.entry {
-		marshalled, _ := common.ToByte(vote)
-		response, _ := peer.Send(r.Ctx, marshalled, ElectionTimeout())
-		unmarshalled, _ := common.FromByte[Vote](response, Vote{})
-
-		if unmarshalled.Term > vote.Term {
-			r.ChangeLeader(unmarshalled.Name)
-			break
-		}
-
-		vote.Term++
+		peer.Send(ctx, electionRequest, ElectionTimeout())
 	}
+
+	go r.ReplicateLogs()
+}
+
+func (r *RaftHub) CheckLeaderHealth() {
+	ticker := time.NewTicker(common.LeaderHealthCheckDelay)
+	defer ticker.Stop()
+
+	for range ticker.C {
+		if r.Self != r.Leader {
+			if !r.Leader.CheckIsAlive() {
+				r.Leader.State = DEAD
+				r.InitiateElection()
+
+				go r.ReplicateLogs()
+			}
+		}
+	}
+}
+
+func (r *RaftHub) ChangeLeader(name string) {
+	peer := r.GetPeer(name)
+	if peer == nil {
+		panic(common.ErrInvalidLeader)
+	}
+
+	// test Leader connection before making as Leader
+	peer.State = LEADER
+	r.Leader = peer
+
+	go r.ReplicateLogs()
+}
+
+func (r *RaftHub) CheckFollowersHealth() {
+	ticker := time.NewTicker(common.FollowerHealthCheckDelay)
+	defer ticker.Stop()
+
+	for range ticker.C {
+
+		for _, peer := range r.Peers.entry {
+			if peer.State != LEADER {
+				if !peer.CheckIsAlive() {
+					peer.State = DEAD
+
+					go r.ReplicateLogs()
+				}
+			}
+		}
+	}
+}
+
+func (r *RaftHub) SendConnectionRequest(ctx context.Context, request *protocol.AddPeerRequest) error {
+	defer common.HandlePanic("request_connection")
+
+	conn, err := grpc.Dial(r.Leader.Address, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	if err != nil {
+		peer := r.GetPeer(request.Peer.Name)
+		peer.State = DEAD
+		return errors.New(common.ErrPeerUnavailable.Error())
+	}
+
+	client := protocol.NewClusterClient(conn)
+
+	resp, _ := client.AddPeer(context.Background(), request)
+	for _, peerStruct := range resp.Peers {
+		if peerStruct.State != string(LEADER) {
+			r.AddPeer(peerStruct.Name, peerStruct.Address)
+		}
+	}
+
+	return nil
+}
+
+func (r *RaftHub) GetLogFilename(ctx context.Context) (*protocol.RPCResponse, error) {
+	conn, err := grpc.Dial(r.Leader.Address, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	if err != nil {
+		return nil, errors.New(common.ErrPeerUnavailable.Error())
+	}
+
+	client := protocol.NewClusterClient(conn)
+	return client.GetLogFilename(ctx, nil)
 }
 
 func (r *RaftHub) Vote(name string) {
@@ -78,67 +166,24 @@ func (r *RaftHub) Vote(name string) {
 	}
 }
 
-func (r *RaftHub) ChangeLeader(name string) {
-	if r.GetPeer(name) == nil {
-		panic(common.InvalidLeader)
+func (r *RaftHub) ReplicateLogs() {
+	peerStates := make([]*protocol.Peer, 0)
+	for _, state := range r.Peers.GetEntries() {
+		peerStates = append(peerStates, &protocol.Peer{
+			Name:    state.Name,
+			Address: state.Address,
+			State:   string(state.State),
+		})
 	}
 
-	// test Leader connection before making as Leader
-	r.Leader = r.GetPeer(name)
-}
-
-func (r RaftHub) GetPeer(name string) *Peer {
-	return r.Peers.Get(&name)
-}
-
-func (r *RaftHub) ReplicateLogs() {
-	panic("not yet implemented")
-}
-
-func (r RaftHub) CheckIsAlive(name string) bool {
-	// TODO : Implement ping to peer
-	return false
-}
-
-func (r *RaftHub) StartHeartBeats() {
-	ctx := context.Background()
-	ticker := time.NewTicker(time.Duration(3) * time.Second)
-	select {
-	case <-ticker.C:
-		for _, peer := range r.Peers.entry {
-			if peer.State == LEADER {
-				continue
-			}
-
-			peer.Send(ctx, []byte("ping"), ElectionTimeout())
-		}
+	for _, node := range r.Peers.GetEntries() {
+		node.ReplicateLogs(context.Background(), &protocol.PeerList{
+			Peers: peerStates,
+		})
 	}
 }
 
 func ElectionTimeout() time.Duration {
-	return time.Duration((time.Duration(rand.Intn(300-500+1)) + 300) * time.Millisecond)
-}
-
-type Map[K any, V any] struct {
-	entry map[*K]V
-}
-
-func (m *Map[K, V]) Get(key *K) V {
-	return m.entry[key]
-}
-
-func (m *Map[K, V]) GetEntries() map[*K]V {
-	return m.entry
-}
-
-func (m *Map[K, V]) Put(key K, value V) {
-	m.entry[&key] = value
-}
-
-func (m *Map[K, V]) Delete(key K) {
-	delete(m.entry, &key)
-}
-
-func NewMap[K any, V any]() Map[K, V] {
-	return Map[K, V]{entry: map[*K]V{}}
+	// return time.Duration((time.Duration(rand.Intn(300-500+1)) + 300) * time.Millisecond)
+	return 3 * time.Second
 }

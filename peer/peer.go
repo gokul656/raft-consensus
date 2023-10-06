@@ -3,6 +3,12 @@ package peer
 import (
 	"context"
 	"time"
+
+	"github.com/gokul656/raft-consensus/common"
+	"github.com/gokul656/raft-consensus/protocol"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/protobuf/types/known/emptypb"
 )
 
 type PeerState string
@@ -14,6 +20,13 @@ const (
 	DEAD      PeerState = "DEAD"
 )
 
+var States = map[string]PeerState{
+	"LEADER":    LEADER,
+	"CANDIDATE": CANDIDATE,
+	"FOLLOWER":  FOLLOWER,
+	"DEAD":      DEAD,
+}
+
 type Peer struct {
 	Address string
 	Name    string
@@ -24,15 +37,37 @@ func (p *Peer) UpdatePeerState(newState PeerState) {
 	p.State = newState
 }
 
-func (p *Peer) Send(ctx context.Context, message []byte, timeout time.Duration) ([]byte, error) {
+func (p *Peer) Send(ctx context.Context, message *protocol.InitiateElectionRequest, timeout time.Duration) ([]byte, error) {
 	// TODO : Implementations
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
+	conn, err := grpc.Dial(p.Address, grpc.WithInsecure())
+	if err != nil {
+		panic(err)
+	}
+
+	client := protocol.NewClusterClient(conn)
+	_, err = client.InitiateElection(ctx, message)
+	if err != nil {
+		return nil, err
+	}
+
 	return nil, nil
 }
 
+func (p *Peer) ReplicateLogs(ctx context.Context, peerStates *protocol.PeerList) {
+	conn, err := grpc.Dial(p.Address, grpc.WithInsecure())
+	if err != nil {
+		panic(err)
+	}
+
+	client := protocol.NewClusterClient(conn)
+	client.ReplicateLogs(ctx, peerStates)
+}
+
 func (p *Peer) CheckIsAlive() bool {
+	defer common.HandlePanic("check_is_alive")
 	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(5)*time.Second)
 	defer cancel()
 
@@ -40,14 +75,18 @@ func (p *Peer) CheckIsAlive() bool {
 }
 
 func (p *Peer) ping(ctx context.Context, address string) bool {
-	ticker := time.NewTicker(time.Duration(1) * time.Second)
-	select {
-	case <-ticker.C:
-		// TODO : if status is up return true
-		p.Send(ctx, []byte("ping"), ElectionTimeout())
-		return true
-	case <-ctx.Done():
-		ticker.Stop()
-		return false
+	defer common.HandlePanic("ping")
+
+	conn, err := grpc.Dial(p.Address, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	if err != nil {
+		panic(common.CustomError{Err: common.ErrPeerUnavailable, Msg: p.Address})
 	}
+
+	client := protocol.NewClusterClient(conn)
+	_, err = client.Ping(context.Background(), &emptypb.Empty{})
+	if err != nil {
+		panic(common.CustomError{Err: common.ErrPeerUnavailable, Msg: p.Address})
+	}
+
+	return true
 }

@@ -2,23 +2,23 @@ package rpc
 
 import (
 	"context"
-	"fmt"
+	"log"
 
 	"github.com/gokul656/raft-consensus/common"
 	"github.com/gokul656/raft-consensus/config"
+	"github.com/gokul656/raft-consensus/internal"
 	"github.com/gokul656/raft-consensus/peer"
 	"github.com/gokul656/raft-consensus/protocol"
-	"google.golang.org/protobuf/types/known/anypb"
 	"google.golang.org/protobuf/types/known/emptypb"
 )
 
-type gRPCServer struct {
+type GRPCServer struct {
 	hub *peer.RaftHub
 	protocol.UnimplementedClusterServer
 }
 
-func (s *gRPCServer) ConnectionStream(conn protocol.Cluster_ConnectionStreamServer) error {
-	defer common.HandlePanic()
+func (s *GRPCServer) ConnectionStream(conn protocol.Cluster_ConnectionStreamServer) error {
+	defer common.HandlePanic("connection_stream")
 
 	ctx := context.Background()
 	for {
@@ -30,13 +30,13 @@ func (s *gRPCServer) ConnectionStream(conn protocol.Cluster_ConnectionStreamServ
 		switch request.Message.(type) {
 		case *protocol.RPCRequest_AddPeer:
 			resp, _ := s.AddPeer(ctx, request.GetAddPeer())
-			conn.Send(resp)
+			conn.Send(RPCCollection_Response(resp))
 		case *protocol.RPCRequest_ElectionRequest:
 			resp, _ := s.InitiateElection(ctx, request.GetElectionRequest())
 			conn.Send(resp)
 		case *protocol.RPCRequest_GetPeerList:
 			resp, _ := s.GetPeers(ctx, nil)
-			conn.Send(resp)
+			conn.Send(RPCCollection_Response(resp))
 		default:
 			defaultMessage := RPCText_Response("unknown method or method not implemented")
 			conn.Send(defaultMessage)
@@ -44,48 +44,68 @@ func (s *gRPCServer) ConnectionStream(conn protocol.Cluster_ConnectionStreamServ
 	}
 }
 
-func (s *gRPCServer) AddPeer(ctx context.Context, req *protocol.AddPeerRequest) (*protocol.RPCResponse, error) {
-	s.hub.Peers.Put(req.Name, &peer.Peer{
-		Address: req.Address,
-		Name:    req.Name,
-		State:   peer.FOLLOWER,
-	})
-
-	return RPCText_Response("success"), nil
+func (s *GRPCServer) Ping(ctx context.Context, _ *emptypb.Empty) (*protocol.RPCResponse, error) {
+	return RPCText_Response("pong"), nil
 }
 
-func (s *gRPCServer) InitiateElection(ctx context.Context, req *protocol.InitiateElectionRequest) (*protocol.RPCResponse, error) {
+func (s *GRPCServer) AddPeer(ctx context.Context, req *protocol.AddPeerRequest) (*protocol.PeerList, error) {
+	newPeer := req.Peer
+	if s.hub.GetPeer(newPeer.Name) != nil {
+		log.Println("peer alive:", newPeer.Address)
+	} else {
+		log.Println("adding peer:", newPeer.Address)
+	}
+
+	s.hub.Peers.Put(newPeer.Name, &peer.Peer{
+		Address: newPeer.Address,
+		Name:    newPeer.Name,
+		State:   peer.FOLLOWER,
+	})
+	return s.GetPeers(ctx, &emptypb.Empty{})
+}
+
+func (s *GRPCServer) ReplicateLogs(ctx context.Context, req *protocol.PeerList) (*protocol.PeerList, error) {
+	for _, newPeer := range req.Peers {
+		existingPeer := s.hub.GetPeer(newPeer.Name)
+		if existingPeer == nil {
+			s.hub.AddPeer(newPeer.Name, newPeer.Address)
+		} else {
+			existingPeer.State = peer.States[newPeer.State]
+		}
+
+		log.Println("updating peer state:", newPeer.Name, newPeer.State, newPeer.Address)
+	}
+
+	log.Println("------------------------------------")
+	return s.GetPeers(ctx, nil)
+}
+
+func (s *GRPCServer) InitiateElection(ctx context.Context, req *protocol.InitiateElectionRequest) (*protocol.RPCResponse, error) {
 	return RPCStruct_Response(nil), nil
 }
 
-func (s *gRPCServer) GetPeers(ctx context.Context, _ *emptypb.Empty) (*protocol.RPCResponse, error) {
-	peers := make([]*anypb.Any, 0)
+func (s *GRPCServer) GetPeers(ctx context.Context, _ *emptypb.Empty) (*protocol.PeerList, error) {
+	peers := &protocol.PeerList{
+		Peers: make([]*protocol.Peer, 0),
+	}
 	for _, peer := range s.hub.Peers.GetEntries() {
-		anyData, _ := anypb.New(&protocol.AddPeerRequest{
+		peerData := &protocol.Peer{
 			Name:    peer.Name,
 			Address: peer.Address,
-		})
-		peers = append(peers, anyData)
+			State:   string(peer.State),
+		}
+		peers.Peers = append(peers.Peers, peerData)
 	}
 
-	return RPCCollection_Response(peers), nil
+	return peers, nil
+}
+
+func (s *GRPCServer) GetLogFilename(ctx context.Context, _ *emptypb.Empty) (*protocol.RPCResponse, error) {
+	return RPCText_Response(common.GetLogfileName(config.GetEnv().LogDir)), nil
 }
 
 func NewgRPCServer() protocol.ClusterServer {
-	raftHub := &peer.RaftHub{
-		Ctx:   context.Background(),
-		Peers: peer.NewMap[string, *peer.Peer](),
-	}
-
-	currentInstance := &peer.Peer{
-		Address: fmt.Sprintf("localhost:%s", config.GetEnv().RPCPort),
-		Name:    config.GetEnv().InstanceID,
-		State:   peer.LEADER,
-	}
-	raftHub.Leader = currentInstance
-	raftHub.Peers.Put(currentInstance.Name, currentInstance)
-
-	return &gRPCServer{
-		hub: raftHub,
+	return &GRPCServer{
+		hub: internal.Cluster,
 	}
 }

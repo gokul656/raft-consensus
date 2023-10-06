@@ -8,17 +8,19 @@ option go_package = "github.com/gokul656/raft-consensus/protocol";
 
 message RPCRequest {
     oneof message {
-        AddPeerRequest addPeer = 1;
-        InitiateElectionRequest electionRequest = 2;
-        google.protobuf.Struct getPeerList = 3;
+        string isAlive = 1;
+        AddPeerRequest addPeer = 2;
+        UpdatePeerStateRequest updateState = 3;
+        InitiateElectionRequest electionRequest = 4;
+        google.protobuf.Struct getPeerList = 5;
     }
 }
 
 message RPCResponse {
     oneof message {
         string text = 1;
-        CollectionMessage collection = 2;
-        google.protobuf.Struct struct = 3;
+        PeerList collection = 2;
+        Peer struct = 3;
     }
 }
 
@@ -27,12 +29,21 @@ message CollectionMessage {
 }
 
 message PeerList {
-    repeated AddPeerRequest peers = 1;
+    repeated Peer peers = 1;
+}
+
+message Peer {
+    string name = 1;
+    string address = 2;
+    string state = 3;
 }
 
 message AddPeerRequest {
-    string name = 1;
-    string address = 2;
+    Peer peer = 1;
+}
+
+message UpdatePeerStateRequest {
+    PeerList peers = 1;
 }
 
 message InitiateElectionRequest {
@@ -44,7 +55,10 @@ message InitiateElectionRequest {
 service Cluster {
     rpc ConnectionStream(stream RPCRequest) returns (stream RPCResponse) {};
     
-    rpc AddPeer(AddPeerRequest) returns (RPCResponse) {}
+    rpc Ping(google.protobuf.Empty) returns(RPCResponse) {}
+    rpc AddPeer(AddPeerRequest) returns (PeerList) {}
+    rpc ReplicateLogs(PeerList) returns (PeerList) {}
     rpc InitiateElection(InitiateElectionRequest) returns (RPCResponse)  {}
-    rpc GetPeers(google.protobuf.Empty) returns (RPCResponse){}
+    rpc GetPeers(google.protobuf.Empty) returns (PeerList){}
+    rpc GetLogFilename(google.protobuf.Empty) returns (RPCResponse) {}
 }
