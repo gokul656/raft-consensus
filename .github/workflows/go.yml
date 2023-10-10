@@ -25,7 +25,7 @@ jobs:
       uses: arduino/setup-protoc@v2
 
     - name: Installing protoc-gen-go
-      run: apt-get install -y protoc-gen-go protoc-gen-go-grpc
+      run: sudo apt-get install -y protoc-gen-go protoc-gen-go-grpc
 
     - name: Build
       run: make build
