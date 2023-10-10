@@ -42,5 +42,6 @@ Install the necessary Protobuf tools with the following commands:
 The project is a work in progress, and the following tasks are planned for future development:
 
 * Need to implement Raft election logic
+* Implement loggers
 * Admin cli to interact with peers
 * Containerization

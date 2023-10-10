@@ -7,44 +7,87 @@ import "google/protobuf/struct.proto";
 option go_package = "github.com/gokul656/raft-consensus/protocol";
 
 message RPCRequest {
-    oneof message {
-        AddPeerRequest addPeer = 1;
-        InitiateElectionRequest electionRequest = 2;
-        google.protobuf.Struct getPeerList = 3;
-    }
+  oneof message {
+    string isAlive = 1;
+    AddPeerRequest addPeer = 2;
+    RemovePeerRequest removePeer = 3;
+    UpdatePeerStateRequest updateState = 4;
+    InitiateElectionMessage electionRequest = 5;
+    google.protobuf.Struct getPeerList = 6;
+  }
 }
 
 message RPCResponse {
+  oneof message {
+    string text = 1;
+    PeerList collection = 2;
+    Peer struct = 3;
+  }
+}
+
+enum PeerState {
+    LEADER = 0;
+    CANDIDATE = 1;
+    FOLLOWER = 2;
+    DEAD = 3;
+  }
+
+message CollectionMessage { repeated google.protobuf.Any data = 1; }
+
+message PeerList { repeated Peer peers = 1; }
+
+message Peer {
+  string name = 1;
+  string address = 2;
+  string state = 3;
+}
+
+message AddPeerRequest { Peer peer = 1; }
+
+message RemovePeerRequest { Peer peer = 1; }
+
+message UpdatePeerStateRequest { PeerList peers = 1; }
+
+message InitiateElectionMessage {
+  string name = 1;
+  string address = 2;
+  uint64 term = 3;
+}
+
+message PeerAddedEvent {
+  string name = 1;
+  string address = 2;
+  uint64 term = 3;
+  PeerState state = 4;
+}
+
+message PeerRemovedEvent {
+    string name = 1;
+}
+
+message PeerStateChangeEvent {
+    string name = 1;
+    PeerState peerState = 2;
+}
+
+message Event {
     oneof message {
-        string text = 1;
-        CollectionMessage collection = 2;
-        google.protobuf.Struct struct = 3;
+        PeerAddedEvent peerAddedEvent = 1;
+        PeerRemovedEvent peerRemovedEvent = 2;
+        PeerStateChangeEvent peerStateChangeEvent = 3;
     }
 }
 
-message CollectionMessage {
-    repeated google.protobuf.Any data = 1;
-}
-
-message PeerList {
-    repeated AddPeerRequest peers = 1;
-}
-
-message AddPeerRequest {
-    string name = 1;
-    string address = 2;
-}
-
-message InitiateElectionRequest {
-    string name = 1;
-    string address = 2;
-    uint64 term = 3;
-}
-
 service Cluster {
-    rpc ConnectionStream(stream RPCRequest) returns (stream RPCResponse) {};
-    
-    rpc AddPeer(AddPeerRequest) returns (RPCResponse) {}
-    rpc InitiateElection(InitiateElectionRequest) returns (RPCResponse)  {}
-    rpc GetPeers(google.protobuf.Empty) returns (RPCResponse){}
+  rpc ConnectionStream(stream RPCRequest) returns (stream RPCResponse) {};
+
+  rpc Ping(google.protobuf.Empty) returns (RPCResponse) {}
+
+  rpc Register(AddPeerRequest) returns (PeerList) {}
+  rpc DeRegister(AddPeerRequest) returns (PeerList) {}
+  rpc NotifyAll(Event) returns (PeerList) {}
+
+  rpc InitiateElection(InitiateElectionMessage) returns (InitiateElectionMessage) {}
+  rpc GetPeers(google.protobuf.Empty) returns (PeerList) {}
+  rpc GetLogFilename(google.protobuf.Empty) returns (RPCResponse) {}
 }
