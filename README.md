@@ -33,8 +33,8 @@ Before running the project, ensure you have the following prerequisites installe
 Install the necessary Protobuf tools with the following commands:
 
 ```
- go install http://google.golang.org/protobuf/cmd/protoc-gen-go@v1.26
- go install http://google.golang.org/grpc/cmd/protoc-gen-go-grpc@v1.1
+    go install google.golang.org/protobuf/cmd/protoc-gen-go@latest
+    go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest
 ```
 
 ## To-Do List
