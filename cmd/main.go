@@ -7,6 +7,7 @@ import (
 
 	"github.com/gokul656/raft-consensus/common"
 	"github.com/gokul656/raft-consensus/config"
+	"github.com/gokul656/raft-consensus/internal"
 	"github.com/gokul656/raft-consensus/protocol"
 	"github.com/gokul656/raft-consensus/rpc"
 	"google.golang.org/grpc"
@@ -19,25 +20,26 @@ func main() {
 	rpcPort := fmt.Sprintf(":%s", conf.RPCPort)
 	apiPort := fmt.Sprintf(":%s", conf.APIPort)
 
-	go setupRest(apiPort)
 	go setupRPC(rpcPort)
+	go setupRest(apiPort)
 
 	log.Println("[ rpc ] listening at         ", rpcPort)
 	log.Println("[ api ] listening at         ", apiPort)
-	log.Println("[ log ] files can be found at", conf.TmpDir)
+	log.Println("[ log ] files can be found at", conf.LogDir)
 
 	select {}
 }
 
 func setupRPC(port string) {
-	defer common.HandlePanic()
+	defer common.HandlePanic("setupRPC")
 
 	server := grpc.NewServer()
 	listen, err := net.Listen("tcp", port)
 	if err != nil {
-		panic(common.InvalidRPCPort)
+		log.Fatalln("bind address already in use")
 	}
 
+	internal.StartupRaft()
 	protocol.RegisterClusterServer(server, rpc.NewgRPCServer())
 	reflection.Register(server)
 

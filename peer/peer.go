@@ -2,52 +2,37 @@ package peer
 
 import (
 	"context"
-	"time"
-)
 
-type PeerState string
-
-const (
-	LEADER    PeerState = "LEADER"
-	CANDIDATE PeerState = "CANDIDATE"
-	FOLLOWER  PeerState = "FOLLOWER"
-	DEAD      PeerState = "DEAD"
+	"github.com/gokul656/raft-consensus/common"
+	"github.com/gokul656/raft-consensus/protocol"
+	"google.golang.org/protobuf/types/known/emptypb"
 )
 
 type Peer struct {
 	Address string
 	Name    string
-	State   PeerState
-}
-
-func (p *Peer) UpdatePeerState(newState PeerState) {
-	p.State = newState
-}
-
-func (p *Peer) Send(ctx context.Context, message []byte, timeout time.Duration) ([]byte, error) {
-	// TODO : Implementations
-	ctx, cancel := context.WithTimeout(ctx, timeout)
-	defer cancel()
-
-	return nil, nil
+	State   *protocol.PeerState `protobuf:"enum=State" json:"State"`
 }
 
 func (p *Peer) CheckIsAlive() bool {
-	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(5)*time.Second)
-	defer cancel()
-
-	return p.ping(ctx, p.Address)
-}
-
-func (p *Peer) ping(ctx context.Context, address string) bool {
-	ticker := time.NewTicker(time.Duration(1) * time.Second)
-	select {
-	case <-ticker.C:
-		// TODO : if status is up return true
-		p.Send(ctx, []byte("ping"), ElectionTimeout())
-		return true
-	case <-ctx.Done():
-		ticker.Stop()
+	client, err := GetClientConnection(p.Address)
+	if err != nil {
 		return false
 	}
+	_, err = client.Ping(context.Background(), &emptypb.Empty{})
+	return err == nil
+}
+
+func (p *Peer) SendMesagge(event *protocol.Event) error {
+	client, err := GetClientConnection(p.Address)
+	if err != nil {
+		return common.ErrPeerUnavailable
+	}
+
+	_, err = client.NotifyAll(context.Background(), event)
+	if err != nil {
+		return common.ErrPeerUnavailable
+	}
+
+	return nil
 }
