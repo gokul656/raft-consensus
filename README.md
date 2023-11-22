@@ -25,7 +25,7 @@ $ ./bin/peer
 Before running the project, ensure you have the following prerequisites installed:
 
 * Go v1.21
-* Make cli
+* Make CLI
 * protobuf-compiler
 
 ## Install Protobuf Tools
