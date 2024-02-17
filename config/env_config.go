@@ -2,44 +2,57 @@ package config
 
 import (
 	"flag"
+	"log"
+	"os"
+
+	"gopkg.in/yaml.v2"
 )
 
-var instaceIDFlag = flag.String("name", "peer-1", "provide peer name")
-var leaderIDFlag = flag.String("leader-name", "peer-0", "provide leader name")
-var rpcPortFlag = flag.String("grpc-port", "51500", "provide port for gRPC connection")
-var apiPortFlag = flag.String("api-port", "3000", "provide port for API connection")
-var knownLeader = flag.String("leader", "", "provide leader address")
-var logDirFlag = flag.String("raft-dir", "./tmp/raft-logs", "provide directory to be used for storing logs")
+var configFile = flag.String("config", "", "path for config.yml")
 
-type EnvConfig struct {
-	InstanceID string
-	APIPort    string
-	RPCPort    string
-	LogDir     string
-	Leader     string
-	LeaderID   string
+type Config struct {
+	Server ServerConfig `yaml:"server"`
 }
 
-func (cfg *EnvConfig) LoadConfig() {
+type PeerConfig struct {
+	FallbackUrl string   `yaml:"fallback_peer_url"`
+	Timeout     uint64   `yaml:"health_check_timeout"`
+	Hosts       []string `yaml:"hosts"`
+}
+
+type ServerConfig struct {
+	Peer       PeerConfig `yaml:"peer"`
+	InstanceID string     `yaml:"instance_id,omitempty"`
+	APIPort    string     `yaml:"api_port,omitempty"`
+	RPCPort    string     `yaml:"rpc_port,omitempty"`
+	LogDir     string     `yaml:"log_dir,omitempty"`
+	Leader     string     `yaml:"leader,omitempty"`
+	LeaderID   string     `yaml:"leader_id,omitempty"`
+}
+
+func (cfg *Config) LoadConfig() {
 	flag.Parse()
+	if *configFile == "" {
+		log.Fatalln("unble to locate config.yml file")
+	}
 
-	cfg.InstanceID = *instaceIDFlag
-	cfg.RPCPort = *rpcPortFlag
-	cfg.APIPort = *apiPortFlag
-	cfg.LogDir = *logDirFlag
-	cfg.Leader = *knownLeader
-	cfg.LeaderID = *leaderIDFlag
+	file, err := os.ReadFile(*configFile)
+	if err != nil {
+		log.Fatalln(err.Error())
+	}
+
+	yaml.Unmarshal(file, env)
 }
 
-var env *EnvConfig
+var env *Config
 
 func init() {
-	env = &EnvConfig{}
+	env = &Config{}
 	env.LoadConfig()
 
 	setupLogDir() // creates a log dir if not exists
 }
 
-func GetEnv() EnvConfig {
-	return *env
+func GetEnv() ServerConfig {
+	return env.Server
 }

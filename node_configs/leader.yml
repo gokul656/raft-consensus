@@ -1,0 +1,13 @@
+server:
+  instance_id: peer-0
+  api_port: 3000
+  rpc_port: 51500
+  log_dir: ./tmp/raft-logs
+  peer:
+    fallback_peer_url: https://google.com/api/peers.txt
+    health_check_timeout: 2 # in seconds
+    hosts: 
+      - 102.123.142.323
+      - 102.123.142.323
+      - 102.123.142.323
+      - 102.123.142.323

@@ -7,9 +7,10 @@ require (
 	google.golang.org/protobuf v1.31.0
 )
 
+require gopkg.in/yaml.v2 v2.4.0
+
 require (
-	github.com/fsnotify/fsnotify v1.6.0 // direct
-	github.com/golang/protobuf v1.5.3 // indirect
+	github.com/golang/protobuf v1.5.3
 	golang.org/x/net v0.12.0 // indirect
 	golang.org/x/sys v0.10.0 // indirect
 	golang.org/x/text v0.11.0 // indirect

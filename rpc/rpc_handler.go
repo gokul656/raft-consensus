@@ -78,7 +78,7 @@ func (s *GRPCServer) NotifyAll(ctx context.Context, req *protocol.Event) (*proto
 		hub.RemovePeer(req.GetPeerRemovedEvent().Name)
 	case *protocol.Event_PeerStateChangeEvent:
 		event := req.GetPeerStateChangeEvent()
-		hub.UpdatePeerStatus(event.Name, event.PeerState.Enum())
+		hub.UpdatePeerStatus(event.Name, *event.PeerState.Enum())
 		log.Println("Updating event", event.Name, event.PeerState.Enum())
 	default:
 		log.Println("Updating event", req)

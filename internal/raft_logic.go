@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"sync"
+	"time"
 
 	"github.com/gokul656/raft-consensus/common"
 	"github.com/gokul656/raft-consensus/config"
@@ -26,7 +27,7 @@ func StartupRaft() {
 			Cluster = peer.NewRaft(&peer.Peer{
 				Address: fmt.Sprintf("localhost:%s", env.RPCPort),
 				Name:    env.InstanceID,
-				State:   protocol.PeerState_FOLLOWER.Enum(),
+				State:   *protocol.PeerState_FOLLOWER.Enum(),
 			})
 
 			Cluster.AddPeer(env.InstanceID, fmt.Sprintf("localhost:%s", env.RPCPort))
@@ -46,7 +47,8 @@ func runAsLeader() {
 	env := config.GetEnv()
 	Cluster.ChangeLeader(env.InstanceID)
 
-	go Cluster.CheckFollowersHealth()
+	timeout := time.Duration(env.Peer.Timeout) * time.Second
+	go Cluster.CheckFollowersHealth(timeout)
 }
 
 func runAsFollower() {

@@ -1,19 +1,14 @@
-
 BINARY_NAME=peer
 LEADER_RPC_PORT=51500
 
 run-leader:
-	go run cmd/* --api-port 3001 --grpc-port ${LEADER_RPC_PORT}  --name peer-0
+	go run cmd/* --config node_configs/leader.yml
 
 run-follower-1:
-	go run cmd/* --api-port 3001 --grpc-port 51501 --leader localhost:${LEADER_RPC_PORT} --name peer-1
+	go run cmd/* --config node_configs/follower-1.yml
 
 run-follower-2:
-	go run cmd/* --api-port 3001 --grpc-port 51502 --leader localhost:${LEADER_RPC_PORT} --name peer-2
-
-run-leader-and-follower:
-	make run-leader &1
-	make run-follower
+	go run cmd/* --config node_configs/follower-2.yml
 
 gen-proto:
 	protoc --go_out=. --go_opt=paths=source_relative --go-grpc_out=. --go-grpc_opt=paths=source_relative protocol/cluster.proto

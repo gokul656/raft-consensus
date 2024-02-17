@@ -3,6 +3,7 @@ package peer
 import (
 	"context"
 	"log"
+	"math/rand"
 	"time"
 
 	"github.com/gokul656/raft-consensus/common"
@@ -21,7 +22,7 @@ func (r *RaftHub) AddPeer(name, address string) {
 	r.peers.Put(name, &Peer{
 		Address: address,
 		Name:    name,
-		State:   protocol.PeerState_FOLLOWER.Enum(),
+		State:   *protocol.PeerState_FOLLOWER.Enum(),
 	})
 
 	go r.notifyAll(&protocol.Event{Message: &protocol.Event_PeerAddedEvent{
@@ -43,9 +44,9 @@ func (r *RaftHub) InitiateElection() {
 		Term:    uint64(r.term),
 	}
 
-	log.Println("[INFO] Initiation election", r.peers)
+	log.Println("[INFO] Initiating election", r.peers)
 	for _, peer := range r.peers.GetEntries() {
-		if peer != r.Self {
+		if peer != r.Self && peer.State != *protocol.PeerState_DEAD.Enum() {
 			response, err := r.InvokePeerElection(context.Background(), peer.Address, electionRequest, ElectionTimeout())
 			if err == nil {
 				log.Println(response.String())
@@ -73,7 +74,7 @@ func (r RaftHub) GetPeerList() Map[string, *Peer] {
 	return r.peers
 }
 
-func (r *RaftHub) UpdatePeerStatus(name string, state *protocol.PeerState) {
+func (r *RaftHub) UpdatePeerStatus(name string, state protocol.PeerState) {
 	peer := r.GetPeer(name)
 	if peer == nil {
 		log.Println("[INFO] Peer not registered", name)
@@ -86,7 +87,7 @@ func (r *RaftHub) UpdatePeerStatus(name string, state *protocol.PeerState) {
 			Message: &protocol.Event_PeerStateChangeEvent{
 				PeerStateChangeEvent: &protocol.PeerStateChangeEvent{
 					Name:      name,
-					PeerState: *state,
+					PeerState: state,
 				},
 			},
 		})
@@ -101,7 +102,7 @@ func (r *RaftHub) ChangeLeader(name string) error {
 
 	// test Leader connection before making as Leader
 	r.Leader = peer
-	r.UpdatePeerStatus(name, protocol.PeerState_LEADER.Enum())
+	r.UpdatePeerStatus(name, *protocol.PeerState_LEADER.Enum())
 	return nil
 }
 
@@ -112,22 +113,24 @@ func (r *RaftHub) CheckLeaderHealth() {
 	for range ticker.C {
 		if r.Self != r.Leader {
 			if !r.Leader.CheckIsAlive() {
-				r.UpdatePeerStatus(r.Leader.Name, protocol.PeerState_DEAD.Enum())
+				r.UpdatePeerStatus(r.Leader.Name, *protocol.PeerState_DEAD.Enum())
 				r.InitiateElection()
 			}
 		}
 	}
 }
 
-func (r *RaftHub) CheckFollowersHealth() {
-	ticker := time.NewTicker(common.FollowerHealthCheckDelay)
+func (r *RaftHub) CheckFollowersHealth(d time.Duration) {
+	ticker := time.NewTicker(d)
 	defer ticker.Stop()
 
 	for range ticker.C {
 		for _, peer := range r.peers.entry {
-			if peer.State != protocol.PeerState_LEADER.Enum() {
-				if !peer.CheckIsAlive() {
-					r.UpdatePeerStatus(peer.Name, protocol.PeerState_DEAD.Enum())
+			if peer.State != *protocol.PeerState_LEADER.Enum() {
+				existingPeer := r.GetPeer(peer.Name)
+				if !peer.CheckIsAlive() && existingPeer.State != *protocol.PeerState_DEAD.Enum() {
+					log.Printf("peer dead: %s", peer.Name)
+					r.UpdatePeerStatus(peer.Name, *protocol.PeerState_DEAD.Enum())
 				}
 			}
 		}
@@ -147,15 +150,14 @@ func (r *RaftHub) Synchronize() {
 			r.AddPeer(peer.Name, peer.Address)
 		}
 
-		r.UpdatePeerStatus(peer.Name, protocol.PeerState(protocol.PeerState_value[peer.State]).Enum())
+		r.UpdatePeerStatus(peer.Name, *protocol.PeerState(protocol.PeerState_value[peer.State]).Enum())
 	}
 
 	log.Println("[INFO] Synchronizing success", r.peers)
 }
 
 func ElectionTimeout() time.Duration {
-	// return time.Duration((time.Duration(rand.Intn(300-500+1)) + 300) * time.Millisecond)
-	return 3 * time.Second
+	return time.Duration(rand.Intn(301)+200) * time.Millisecond
 }
 
 func NewRaft(self *Peer) *RaftHub {
