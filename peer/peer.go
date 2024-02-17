@@ -11,7 +11,7 @@ import (
 type Peer struct {
 	Address string
 	Name    string
-	State   *protocol.PeerState `protobuf:"enum=State" json:"State"`
+	State   protocol.PeerState `protobuf:"enum=State" json:"State"`
 }
 
 func (p *Peer) CheckIsAlive() bool {
