@@ -3,6 +3,7 @@ package peer
 import (
 	"context"
 	"log"
+	"math/rand"
 	"time"
 
 	"github.com/gokul656/raft-consensus/common"
@@ -51,6 +52,7 @@ func (r *RaftHub) InvokePeerElection(ctx context.Context, address string, messag
 		return nil, common.ErrPeerUnavailable
 	}
 
+	time.Sleep(time.Duration(rand.Intn(301)+200) * time.Millisecond)
 	response, err := client.InitiateElection(ctx, message)
 	if err != nil {
 		return nil, common.ErrPeerUnavailable
